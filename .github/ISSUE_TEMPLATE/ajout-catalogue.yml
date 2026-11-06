@@ -1,0 +1,17 @@
+name: Demande d'ajout de catalogue
+description: Demandez l'intégration d'une nouvelle bibliothèque ou médiathèque.
+title: "[Catalogue] "
+labels: ["catalogue", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de vouloir enrichir **Dispobook** ! Veuillez remplir les informations ci-dessous concernant le catalogue de votre bibliothèque.
+  - type: input
+    id: systeme
+    attributes:
+      label: Système / Logiciel
+      description: Koha, PMB, Syracuse, Waterbear, etc. 
+      placeholder: Ex. Koha
+    validations:
+      required: true

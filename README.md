@@ -98,6 +98,12 @@ booknode-biblio/
 ```
 
 ## Ajouter un catalogue
+Votre bibliothèque municipale ou universitaire n'est pas encore supportée ? Vous pouvez demander son ajout en ouvrant une demande (*issue*).
+
+### Comment faire ?
+
+1. Rendez-vous sur cette page **[Issues](https://github.com/CelianVD/DispoBook/issues/new?template=ajout-catalogue.yml)** de ce dépôt GitHub.
+2. Remplissez par ce qui vous est demandé.
 
 
 ## Dépannage
