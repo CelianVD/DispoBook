@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "DispoBook",
+  "version": "1.1.0",
+  "description": "Affiche sur Booknode (Mes envies) si les livres sont disponibles dans votre bibliothèque municipale.",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "DispoBook@example.local",
+      "strict_min_version": "121.0"
+    }
+  },
+
+  "permissions": ["storage"],
+
+  "host_permissions": [
+    "https://booknode.com/*",
+    "https://www.booknode.com/*"
+  ],
+
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://booknode.com/profil/*/biblio*",
+        "https://www.booknode.com/profil/*/biblio*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+
+  "action": {
+    "default_title": "DispoBook"
+  }
+}

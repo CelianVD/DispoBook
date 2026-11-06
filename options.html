@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>DispoBook — Réglages</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4efe9;
+      --bg-glow-1: #e9d9ff;
+      --bg-glow-2: #ffe1cf;
+      --card: #ffffffcc;
+      --card-border: #ffffff;
+      --text: #2a2230;
+      --muted: #6f6578;
+      --field: #fff;
+      --field-border: #ddd3e6;
+      --accent: #7a3e5c;
+      --accent-2: #b4527a;
+      --accent-soft: #7a3e5c1a;
+      --ok: #2e9b4e;
+      --warn: #e08a1e;
+      --off: #9aa0a6;
+      --err: #d0432f;
+      --shadow: 0 20px 50px -20px #4b1d3f55, 0 2px 6px #4b1d3f14;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #17121c;
+        --bg-glow-1: #3a1f4d;
+        --bg-glow-2: #4a2432;
+        --card: #231b2bcc;
+        --card-border: #ffffff14;
+        --text: #f2eaf7;
+        --muted: #a99bb5;
+        --field: #1b1522;
+        --field-border: #3a2d46;
+        --accent: #d77aa5;
+        --accent-2: #a45bd0;
+        --accent-soft: #d77aa522;
+        --shadow: 0 20px 50px -20px #000a, 0 2px 6px #0006;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 10% -10%, var(--bg-glow-1), transparent 60%),
+        radial-gradient(800px 500px at 100% 0%, var(--bg-glow-2), transparent 55%),
+        var(--bg);
+      display: flex; justify-content: center;
+      padding: 48px 18px 64px;
+    }
+    .wrap { width: 100%; max-width: 620px; }
+
+    /* ---------- En-tête ---------- */
+    header { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
+    .logo {
+      flex: none; width: 60px; height: 60px; border-radius: 18px;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      display: grid; place-items: center; color: #fff;
+      box-shadow: 0 10px 24px -8px var(--accent-2);
+      transform: rotate(-6deg);
+    }
+    .logo svg { width: 32px; height: 32px; }
+    h1 { margin: 0; font-size: 1.55rem; line-height: 1.15; letter-spacing: -.02em; }
+    h1 span { color: var(--accent-2); }
+    .tagline { margin: 4px 0 0; color: var(--muted); }
+
+    /* ---------- Cartes ---------- */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 22px;
+      padding: 26px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      margin-bottom: 18px;
+    }
+    .card h2 { margin: 0 0 4px; font-size: 1.05rem; }
+    .card .sub { margin: 0 0 18px; color: var(--muted); font-size: .93rem; }
+
+    /* ---------- Formulaire ---------- */
+    .field { margin-bottom: 20px; }
+    label { display: block; font-weight: 650; font-size: .92rem; margin-bottom: 7px; }
+    .control { position: relative; }
+    .control svg.lead {
+      position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+      width: 20px; height: 20px; color: var(--muted); pointer-events: none;
+    }
+    input, select {
+      width: 100%; font: inherit; color: inherit;
+      padding: 12px 14px 12px 42px;
+      background: var(--field);
+      border: 1.5px solid var(--field-border);
+      border-radius: 14px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      appearance: none; -moz-appearance: none; -webkit-appearance: none;
+    }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center; background-size: 18px;
+      padding-right: 40px;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    input::placeholder { color: var(--muted); opacity: .65; }
+    small { display: block; margin-top: 7px; color: var(--muted); font-size: .85rem; }
+    .chip {
+      display: inline-block; margin-left: 4px; padding: 1px 9px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent-2);
+      font-size: .82rem; user-select: all;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px; }
+    button.btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 20px; font: inherit; font-weight: 650;
+      border: 0; border-radius: 14px; cursor: pointer;
+      transition: transform .12s, box-shadow .15s, filter .15s;
+    }
+    button.btn svg { width: 18px; height: 18px; }
+    button.btn:active { transform: scale(.97); }
+    .btn.primary {
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      box-shadow: 0 10px 22px -10px var(--accent-2);
+    }
+    .btn.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 26px -10px var(--accent-2); }
+    .btn.ghost { color: var(--text); background: transparent; border: 1.5px solid var(--field-border); }
+    .btn.ghost:hover { background: var(--accent-soft); }
+
+    #status {
+      flex-basis: 100%; min-height: 1.4em; margin-top: 4px;
+      font-weight: 600; font-size: .92rem;
+    }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--err); }
+
+    /* ---------- Légende ---------- */
+    .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    .legend li { display: flex; align-items: center; gap: 14px; }
+    .dot {
+      flex: none; width: 34px; height: 34px; border-radius: 50%;
+      background: #fff; display: grid; place-items: center;
+      box-shadow: 0 1px 5px #0003;
+    }
+    .dot svg { width: 22px; height: 22px; }
+    .legend b { display: block; font-size: .95rem; }
+    .legend span { color: var(--muted); font-size: .86rem; }
+
+    /* ---------- Pied ---------- */
+    .privacy {
+      display: flex; gap: 12px; align-items: flex-start;
+      color: var(--muted); font-size: .85rem; padding: 4px 6px;
+    }
+    .privacy svg { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--ok); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <header>
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="m9 10 2 2 4-4"/></svg>
+      </div>
+      <div>
+        <h1>DispoBook</h1>
+        <p class="tagline">Vos envies, disponibles près de chez vous.</p>
+      </div>
+    </header>
+
+    <form id="form" class="card">
+      <h2>Votre catalogue</h2>
+      <p class="sub">Indiquez le site de votre bibliothèque pour voir la disponibilité de vos envies directement sur Booknode.</p>
+
+      <div class="field">
+        <label for="systemType">Système de catalogue</label>
+        <div class="control">
+          <svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+          <select id="systemType"></select>
+        </div>
+        <small>D'autres systèmes (Koha, PMB, Waterbear…) pourront être ajoutés.</small>
+      </div>
+
+      <div class="field">
+        <label for="baseUrl">URL de base du catalogue</label>
+        <div class="control">
+          <svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
+          <input id="baseUrl" type="url" placeholder="https://bibliotheque.fr" required>
+        </div>
+        <small>Adresse du site de votre bibliothèque, sans le chemin de recherche.
+          Exemple : <span class="chip">https://bibliotheque.fr</span></small>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Enregistrer
+        </button>
+        <button type="button" id="clear" class="btn ghost">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/></svg>
+          Vider le cache
+        </button>
+        <span id="status" role="status"></span>
+      </div>
+    </form>
+
+    <section class="card">
+      <h2>Que signifient les pastilles ?</h2>
+      <p class="sub">Elles apparaissent en haut à droite de chaque livre de « Mes envies ». Cliquez dessus pour ouvrir la recherche dans le catalogue.</p>
+      <ul class="legend">
+        <li>
+          <span class="dot"><svg viewBox="0 0 256 256" fill="#2e9b4e"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg></span>
+          <div><b>Disponible</b><span>Au moins un exemplaire est libre sur les rayons.</span></div>
+        </li>
+        <li>
+          <span class="dot"><svg viewBox="0 0 256 256" fill="#e08a1e"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></svg></span>
+          <div><b>Présent mais emprunté</b><span>Le livre est au catalogue, mais tous les exemplaires sont sortis.</span></div>
+        </li>
+        <li>
+          <span class="dot"><svg viewBox="0 0 256 256" fill="#9aa0a6"><path d="M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg></span>
+          <div><b>Non trouvé</b><span>Aucune notice ne correspond dans ce catalogue.</span></div>
+        </li>
+        <li>
+          <span class="dot"><svg viewBox="0 0 256 256" fill="#d0432f"><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg></span>
+          <div><b>Erreur</b><span>Non configuré, catalogue injoignable ou trop de requêtes. Survolez la pastille pour le détail.</span></div>
+        </li>
+      </ul>
+    </section>
+
+    <div class="privacy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      <span>Aucune donnée personnelle n'est envoyée : seuls le titre et l'auteur des livres sont recherchés dans votre catalogue. Les résultats sont mis en cache quelques heures pour ménager le site de la bibliothèque.</span>
+    </div>
+
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
