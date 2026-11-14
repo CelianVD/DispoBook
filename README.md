@@ -17,6 +17,10 @@ Une pastille apparaît en haut à droite de chaque livre :
 
 Un clic sur la pastille ouvre la recherche correspondante dans le catalogue.
 
+## Sur la page d'un livre
+
+Sur la page de n'importe quel livre Booknode, un bouton **↻** apparaît à droite de la ligne « N notes | N commentaires | N extraits ». Un clic lance la vérification au catalogue pour ce livre (sans l'ajouter à *Mes envies*) et affiche la pastille correspondante. Un nouveau clic relance la recherche en ignorant le cache.
+
 ## Catalogues pris en charge
 
 - **Archimed / Syracuse**
@@ -93,7 +97,8 @@ Seuls le **titre** et l'**auteur** des livres sont envoyés au site de votre bib
 booknode-biblio/
 ├── manifest.json        Manifest V3 (Firefox + Chrome)
 ├── background.js        File d'attente, cache, anti-rate-limit, appels réseau
-├── content.js           Lecture de Booknode + affichage des pastilles
+├── content.js           Lecture de « Mes envies » + affichage des pastilles
+├── bookpage.js          Bouton ↻ sur la page d'un livre
 ├── options.html         Page de réglages
 ├── options.js           Lecture / sauvegarde des réglages
 └── adapters/
@@ -121,7 +126,8 @@ Votre bibliothèque municipale ou universitaire n'est pas encore supportée ? Vo
 | Pastille ❓ « Réponse Search inattendue » | Le format du portail diffère : copiez le message affiché au survol et adaptez `adapters/archimed.js`. |
 | Un livre présent est « non trouvé » | Vérifiez la recherche en cliquant sur la pastille. Les titres Booknode (traductions, éditions) peuvent différer de ceux du catalogue. |
 | Un ancien résultat persiste | Cliquez sur **Vider le cache** dans les réglages. |
-| Aucune pastille | Vérifiez que vous êtes sur `booknode.com/profil/…/biblio` et que la section s'appelle bien « Mes envies ». Si Booknode a changé son HTML, ajustez `findWishSection` et `extractBooks` dans `content.js`. |
+| Aucune pastille | Vérifiez que vous êtes sur `booknode.com/profil/…/biblio` et que la section s'appelle bien « Mes envies ». Si Booknode a changé son HTML, ajustez `findWishSection` et `extractBooks` dans `content.js`.
+| Pas de bouton ↻ sur une page livre | Le bouton se place après la ligne « notes / commentaires / extraits » : ajustez `findStatsLine` (et `readBook` pour le titre / l'auteur) dans `bookpage.js`. | |
 
 ## Limites
 

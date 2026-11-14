@@ -12,6 +12,9 @@ import { C3rbAdapter } from "./c3rb.js";
 export const ADAPTERS = [
   ArchimedAdapter,
   C3rbAdapter,
+  // KohaAdapter,
+  // PmbAdapter,
+  // WaterbearAdapter,
 ];
 
 export const DEFAULT_ADAPTER_ID = ArchimedAdapter.id;

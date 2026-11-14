@@ -104,6 +104,7 @@ async function fetchJson(url, body) {
   }
 }
 
+// GET HTML (portails rendus côté serveur, ex. Orphée) : retourne { url, text }
 async function fetchText(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
@@ -124,6 +125,7 @@ async function fetchText(url) {
   }
 }
 
+// Même logique « polie » que politePostJson, pour les GET
 async function politeGetPage(url) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = await enqueue(async () => {
@@ -145,6 +147,7 @@ async function politeGetPage(url) {
   throw new RateLimited();
 }
 
+// POST « poli » : respecte la file, attend pendant un blocage, retente 2 fois.
 async function politePostJson(url, body) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = await enqueue(async () => {
@@ -167,7 +170,7 @@ async function politePostJson(url, body) {
 }
 
 // ---------- Vérification d'un livre ----------
-async function checkBook(book) {
+async function checkBook(book, force = false) {
   const settings = await getSettings();
   if (!settings.baseUrl) return { status: "error", reason: "not_configured" };
 
@@ -178,7 +181,7 @@ async function checkBook(book) {
   const key = cacheKey(settings, book);
   const cache = await readCache();
   const hit = cache[key];
-  if (hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)) {
+  if (!force && hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)) {
     return { status: hit.status, url: hit.url, cached: true };
   }
 
@@ -219,7 +222,7 @@ async function checkBook(book) {
 // ---------- Messagerie avec le content script ----------
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CHECK_BOOK") {
-    checkBook(msg.book)
+    checkBook(msg.book, !!msg.force)
       .then(sendResponse)
       .catch((e) => sendResponse({ status: "error", reason: "exception", message: String(e) }));
     return true; // réponse asynchrone (Firefox + Chrome)
