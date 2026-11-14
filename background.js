@@ -104,7 +104,47 @@ async function fetchJson(url, body) {
   }
 }
 
-// POST « poli » : respecte la file, attend pendant un blocage, retente 2 fois.
+async function fetchText(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      signal: ctrl.signal,
+      credentials: "include",
+      headers: { "Accept": "text/html,application/xhtml+xml" },
+    });
+    if (res.status === 429 || res.status === 503) throw new RateLimited();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (/trop\s+de\s+requ[êe]tes/i.test(text.slice(0, 5000))) throw new RateLimited();
+    return { url: res.url || url, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function politeGetPage(url) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = await enqueue(async () => {
+      const wait = cooldownUntil - Date.now();
+      if (wait > 0) await sleep(wait);
+      try {
+        const page = await fetchText(url);
+        strikes = 0;
+        return { ok: true, page };
+      } catch (e) {
+        if (!(e instanceof RateLimited)) throw e;
+        strikes++;
+        cooldownUntil = Date.now() + Math.min(COOLDOWN_MAX_MS, COOLDOWN_STEP_MS * strikes);
+        return null;
+      }
+    });
+    if (out) return out.page;
+  }
+  throw new RateLimited();
+}
+
 async function politePostJson(url, body) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = await enqueue(async () => {
@@ -154,7 +194,7 @@ async function checkBook(book) {
 
   try {
     await warmUp(new URL(settings.baseUrl).origin);
-    const ctx = { postJson: politePostJson };
+    const ctx = { postJson: politePostJson, getPage: politeGetPage };
     for (const query of adapter.buildQueries(book).slice(0, MAX_QUERIES_PER_BOOK)) {
       const url = adapter.buildSearchUrl(settings.baseUrl, query);
       const parsed = await adapter.check(ctx, settings.baseUrl, query, book);

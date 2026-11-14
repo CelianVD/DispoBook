@@ -20,6 +20,7 @@ Un clic sur la pastille ouvre la recherche correspondante dans le catalogue.
 ## Catalogues pris en charge
 
 - **Archimed / Syracuse**
+- **C3RB Informatique / Portail Orphée**
 
 L'architecture est faite pour ajouter d'autres systèmes (Koha, PMB, Waterbear…), voir [Ajouter un catalogue](#ajouter-un-catalogue).
 
@@ -61,6 +62,9 @@ Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio` : les past
    - `POST /Portal/Services/ILSClient.svc/CheckAvailability` retourne les exemplaires disponibles.
 
    Syracuse est une application monopage : le HTML de `search.aspx` ne contient pas les résultats, d'où l'appel direct à ces services.
+   Pour C3RB / Orphée (pages rendues côté serveur) :
+   - `GET /recherche-simple/simple/Mots+Notice/-1/<mots>/perso` retourne la liste des notices ;
+   - `GET /detail-dune-notice/notice/<id>` est lue pour chaque notice retenue (3 au maximum) : la colonne **Situation** du tableau « Exemplaires » donne `En rayon` (disponible) ou `Sorti/demandée` (emprunté). Un exemplaire en rayon mais en « consultation sur place » / « exclu du prêt » n'est pas compté comme disponible.
 4. Le résultat est affiché sous forme de pastille.
 
 ### Requêtes de recherche
@@ -94,7 +98,8 @@ booknode-biblio/
 ├── options.js           Lecture / sauvegarde des réglages
 └── adapters/
     ├── index.js         Registre des adaptateurs
-    └── archimed.js      Adaptateur Archimed / Syracuse
+    ├── archimed.js      Adaptateur Archimed / Syracuse
+    └── c3rb.js          Adaptateur C3RB Informatique / Orphée
 ```
 
 ## Ajouter un catalogue
@@ -121,5 +126,5 @@ Votre bibliothèque municipale ou universitaire n'est pas encore supportée ? Vo
 ## Limites
 
 - Booknode n'a pas d'API : l'extension lit le HTML de la page, qui peut changer.
-- La détection de la disponibilité dépend du format des réponses du portail Syracuse et peut demander un ajustement selon la bibliothèque.
+- La détection de la disponibilité dépend du format des réponses du portail (Syracuse, Orphée) et peut demander un ajustement selon la bibliothèque. Sur Orphée, l'adresse de recherche (`/recherche-simple/…`) est un alias de menu Joomla : si votre portail l'a renommé, adaptez `buildSearchUrl` dans `adapters/c3rb.js`.
 - Seule la section « Mes envies » est vérifiée.
