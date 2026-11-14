@@ -7,10 +7,12 @@ import { getAdapter, DEFAULT_ADAPTER_ID } from "./adapters/index.js";
 const api = globalThis.browser ?? globalThis.chrome;
 
 const CACHE_KEY = "resultCache";
+const CACHE_TTL_MS = 2 * 24 * 3600 * 1000; // 48 h
 const CACHE_TTL = {
-  available: 6 * 3600 * 1000,   // 6 h : la dispo change vite
-  borrowed: 6 * 3600 * 1000,
-  notfound: 24 * 3600 * 1000,   // 24 h : un titre absent change rarement
+  // Mémoire de 2 jours pour tous les résultats (le bouton ↻ force une mise à jour)
+  available: CACHE_TTL_MS,
+  borrowed: CACHE_TTL_MS,
+  notfound: CACHE_TTL_MS,
 };
 const MIN_DELAY_MS = 1000;      // délai minimal entre deux appels réseau (catalogues = rate limit strict)
 const FETCH_TIMEOUT_MS = 15000;
@@ -37,6 +39,11 @@ async function readCache() {
 }
 
 async function writeCache(cache) {
+  // On jette les entrées périmées pour que le cache ne grossisse pas indéfiniment
+  const now = Date.now();
+  for (const [k, v] of Object.entries(cache)) {
+    if (now - v.ts > CACHE_TTL_MS) delete cache[k];
+  }
   await api.storage.local.set({ [CACHE_KEY]: cache });
 }
 
@@ -169,6 +176,19 @@ async function politePostJson(url, body) {
   throw new RateLimited();
 }
 
+// Lecture du cache SEULE (aucun appel réseau) : sert à afficher les pastilles au chargement
+async function lookupCached(books) {
+  const settings = await getSettings();
+  if (!settings.baseUrl) return books.map(() => null);
+  const cache = await readCache();
+  return books.map((book) => {
+    const hit = cache[cacheKey(settings, book)];
+    return hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)
+      ? { status: hit.status, url: hit.url, cached: true, ts: hit.ts }
+      : null;
+  });
+}
+
 // ---------- Vérification d'un livre ----------
 async function checkBook(book, force = false) {
   const settings = await getSettings();
@@ -182,7 +202,7 @@ async function checkBook(book, force = false) {
   const cache = await readCache();
   const hit = cache[key];
   if (!force && hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)) {
-    return { status: hit.status, url: hit.url, cached: true };
+    return { status: hit.status, url: hit.url, cached: true, ts: hit.ts };
   }
 
   // 2) Permission d'accès au domaine du catalogue
@@ -216,7 +236,7 @@ async function checkBook(book, force = false) {
   cache[key] = { status: result.status, url: usedUrl, ts: Date.now() };
   await writeCache(cache);
 
-  return { status: result.status, url: usedUrl, cached: false };
+  return { status: result.status, url: usedUrl, cached: false, ts: Date.now() };
 }
 
 // ---------- Messagerie avec le content script ----------
@@ -226,6 +246,10 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .then(sendResponse)
       .catch((e) => sendResponse({ status: "error", reason: "exception", message: String(e) }));
     return true; // réponse asynchrone (Firefox + Chrome)
+  }
+  if (msg?.type === "GET_CACHED") {
+    lookupCached(msg.books || []).then(sendResponse).catch(() => sendResponse((msg.books || []).map(() => null)));
+    return true;
   }
   if (msg?.type === "OPEN_OPTIONS") {
     api.runtime.openOptionsPage();

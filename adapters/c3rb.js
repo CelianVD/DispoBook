@@ -1,3 +1,18 @@
+// ============================================================
+// Adaptateur « C3RB Informatique / Portail Orphée »
+// ------------------------------------------------------------
+// Les portails Orphée (Joomla + composant com_opac) sont rendus côté serveur :
+//   1) recherche : GET /recherche-simple/simple/Mots+Notice/-1/<mots>/perso
+//      → liste de notices, chacune liée à /detail-dune-notice/notice/<id>-<base>
+//        (si un seul résultat, le portail peut rediriger directement vers la notice)
+//   2) notice    : GET /detail-dune-notice/notice/<id>-<base>
+//      → tableau « Exemplaires » avec une colonne « Situation »
+//        (« En rayon » = disponible, « Sorti/demandée » = emprunté)
+//
+// Contrat commun (voir archimed.js) ; cet adaptateur utilise en plus
+//   ctx.getPage(url) → { url, text } (HTML, après redirections éventuelles)
+// ============================================================
+
 function normalize(str = "") {
   return str
     .normalize("NFD")

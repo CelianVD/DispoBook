@@ -55,12 +55,11 @@ La page de réglages s'ouvre automatiquement à la première installation. Vous 
 2. Saisissez l'**URL de base** de votre bibliothèque, sans chemin de recherche.
 3. Cliquez sur **Enregistrer** et **acceptez l'autorisation d'accès** au site du catalogue, sinon la vérification ne peut pas fonctionner.
 
-Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio` : les pastilles se chargent livre par livre.
+Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio`. **Rien n'est envoyé au catalogue au chargement** : seules les pastilles déjà en mémoire (2 jours) s'affichent. Cliquez sur le bouton **↻** à côté du titre « Mes envies » pour vérifier les livres qui n'ont pas de résultat récent (un compteur indique la progression). **Maj + clic** revérifie tous les livres en ignorant la mémoire.
 
 ## Fonctionnement
 
-1. Le *content script* (`content.js`) repère la section « Mes envies » et extrait le titre et l'auteur de chaque livre.
-2. Il envoie chaque livre au *background* (`background.js`), qui gère la file d'attente, le cache et les erreurs.
+1. Le *content script* (`content.js`) repère la section « Mes envies » et extrait le titre et l'auteur de chaque livre. Au chargement il affiche la mémoire ; au clic sur ↻ il envoie les livres sans résultat récent, un par un, au *background* (`background.js`), qui gère la file d'attente, le cache et les erreurs.
 3. L'adaptateur du catalogue interroge le portail. Pour Syracuse :
    - `POST /Portal/Recherche/Search.svc/Search` retourne les notices ;
    - `POST /Portal/Services/ILSClient.svc/CheckAvailability` retourne les exemplaires disponibles.
@@ -84,8 +83,8 @@ Une notice n'est retenue que si au moins 60 % des mots du titre y apparaissent, 
 
 - 1 seconde minimum entre deux appels, un livre à la fois.
 - En cas de « Trop de requêtes » (HTTP 429/503 ou message dans la réponse) : pause de 30 s, puis 60 s, 90 s… jusqu'à 120 s, avec 3 tentatives.
-- **Cache** : 6 h pour « disponible » et « emprunté », 24 h pour « non trouvé ». Les erreurs ne sont pas mises en cache.
-- Le cache est vidé automatiquement quand vous changez de catalogue. Le bouton **Vider le cache** des réglages le vide à la main.
+- **Mémoire de 2 jours** pour tous les résultats (« disponible », « emprunté », « non trouvé »). Les erreurs ne sont pas mises en mémoire. Les entrées périmées sont supprimées automatiquement.
+- Le cache est vidé automatiquement quand vous changez de catalogue. Le bouton **Vider le cache** des réglages le vide à la main. Le bouton ↻ d'une page livre ignore toujours la mémoire.
 
 ## Confidentialité
 
@@ -125,7 +124,7 @@ Votre bibliothèque municipale ou universitaire n'est pas encore supportée ? Vo
 | Pastille ❓ « trop de requêtes » | Attendez quelques minutes et rechargez. Au besoin, augmentez `MIN_DELAY_MS` dans `background.js`. |
 | Pastille ❓ « Réponse Search inattendue » | Le format du portail diffère : copiez le message affiché au survol et adaptez `adapters/archimed.js`. |
 | Un livre présent est « non trouvé » | Vérifiez la recherche en cliquant sur la pastille. Les titres Booknode (traductions, éditions) peuvent différer de ceux du catalogue. |
-| Un ancien résultat persiste | Cliquez sur **Vider le cache** dans les réglages. |
+| Un ancien résultat persiste | **Maj + clic** sur ↻, ou **Vider le cache** dans les réglages. |
 | Aucune pastille | Vérifiez que vous êtes sur `booknode.com/profil/…/biblio` et que la section s'appelle bien « Mes envies ». Si Booknode a changé son HTML, ajustez `findWishSection` et `extractBooks` dans `content.js`.
 | Pas de bouton ↻ sur une page livre | Le bouton se place après la ligne « notes / commentaires / extraits » : ajustez `findStatsLine` (et `readBook` pour le titre / l'auteur) dans `bookpage.js`. | |
 

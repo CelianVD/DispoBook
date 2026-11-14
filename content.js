@@ -7,6 +7,7 @@
 
   // ---------- Icônes Phosphor (regular, SVG embarqués : aucun CDN) ----------
   const P = {
+    reload:   "M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z",
     check:    "M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z",
     clock:    "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z",
     xcircle:  "M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z",
@@ -33,6 +34,11 @@
     .bnb-loading{display:inline-block;width:1em;height:1em;margin-left:6px;vertical-align:middle;
       border:2px solid #9aa0a6;border-top-color:transparent;border-radius:50%;animation:bnb-spin .8s linear infinite}
     @keyframes bnb-spin{to{transform:rotate(360deg)}}
+    .bnb-reload-all{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 4px;border:0;background:none;
+      color:inherit;cursor:pointer;line-height:1;font-size:.85em;opacity:.75;border-radius:6px;vertical-align:middle}
+    .bnb-reload-all:hover{opacity:1}
+    .bnb-reload-all[disabled]{cursor:progress;opacity:.6}
+    .bnb-reload-all.bnb-run svg{animation:bnb-spin .8s linear infinite}
   `;
   document.head.appendChild(style);
 
@@ -69,8 +75,25 @@
   }
 
   // ---------- Badge ----------
+  function clearMarks(anchor) {
+    let n = anchor.nextElementSibling;
+    while (n && (n.classList.contains("bnb-badge") || n.classList.contains("bnb-loading"))) {
+      const next = n.nextElementSibling;
+      n.remove();
+      n = next;
+    }
+  }
+
+  function ago(ts) {
+    const min = Math.round((Date.now() - ts) / 60000);
+    if (min < 1) return "à l'instant";
+    if (min < 60) return `il y a ${min} min`;
+    const h = Math.round(min / 60);
+    return h < 48 ? `il y a ${h} h` : `il y a ${Math.round(h / 24)} j`;
+  }
+
   function setBadge(book, res) {
-    book.loader?.remove();
+    clearMarks(book.anchor);
     const key = STATES[res?.status] ? res.status : "error";
     const s = STATES[key];
     const a = document.createElement("a");
@@ -83,7 +106,8 @@
       network: " — catalogue injoignable",
     };
     a.title = s.label + (key === "error" ? (REASONS[res?.reason] || ` (${res?.reason || "inconnue"})`) : "")
-      + (key === "error" && res?.message ? `\n${res.message}` : "");
+      + (key === "error" && res?.message ? `\n${res.message}` : "")
+      + (res?.ts ? `\nVérifié ${ago(res.ts)}` : "");
     a.innerHTML = svg(s.icon);
     a.target = "_blank";
     a.rel = "noopener noreferrer";
@@ -97,40 +121,91 @@
   }
 
   function addLoader(book) {
+    clearMarks(book.anchor);
     const l = document.createElement("span");
     l.className = "bnb-loading";
     book.anchor.insertAdjacentElement("afterend", l);
     book.loader = l;
   }
 
-  // ---------- Envoi au background (séquentiel, le background gère le débit) ----------
-  async function run() {
+  // ---------- Fonctionnement ----------
+  // Au chargement : AUCUN appel au catalogue, on affiche seulement ce qui est en mémoire (2 jours).
+  // Le bouton ↻ du titre « Mes envies » lance la vérification des livres sans résultat récent.
+  // Maj + clic : tout revérifier en ignorant la mémoire.
+  const send = (msg) => api.runtime.sendMessage(msg).catch(() => null);
+  const payload = (b) => ({ title: b.title, author: b.author, isbn: b.isbn });
+  let running = false;
+
+  async function showCached() {
     const section = findWishSection();
     if (!section) return;
-    const books = extractBooks(section).filter((b) => !b.anchor.dataset.bnbDone);
+    injectButton(section);
+    const books = extractBooks(section).filter((b) => !b.anchor.dataset.bnbSeen);
+    if (!books.length) return;
+    books.forEach((b) => { b.anchor.dataset.bnbSeen = "1"; });
+    const cached = (await send({ type: "GET_CACHED", books: books.map(payload) })) || [];
+    books.forEach((b, i) => { if (cached[i]) setBadge(b, cached[i]); });
+  }
 
-    for (const b of books) { b.anchor.dataset.bnbDone = "1"; addLoader(b); }
+  async function runAll(force, btn) {
+    if (running) return;
+    const section = findWishSection();
+    if (!section) return;
+    running = true;
+    btn.disabled = true;
+    btn.classList.add("bnb-run");
+    const count = btn.querySelector(".bnb-count");
 
-    for (const b of books) {
-      let res;
-      try {
-        res = await api.runtime.sendMessage({
-          type: "CHECK_BOOK",
-          book: { title: b.title, author: b.author, isbn: b.isbn },
-        });
-      } catch (e) {
-        res = { status: "error", reason: "messaging" };
+    try {
+      const books = extractBooks(section);
+      const cached = force ? [] : ((await send({ type: "GET_CACHED", books: books.map(payload) })) || []);
+      const todo = [];
+      books.forEach((b, i) => {
+        b.anchor.dataset.bnbSeen = "1";
+        if (cached[i]) setBadge(b, cached[i]);
+        else todo.push(b);
+      });
+      todo.forEach(addLoader);
+
+      let done = 0;
+      for (const b of todo) {
+        count.textContent = `${done}/${todo.length}`;
+        let res;
+        try {
+          res = await api.runtime.sendMessage({ type: "CHECK_BOOK", book: payload(b), force: !!force });
+        } catch {
+          res = { status: "error", reason: "messaging" };
+        }
+        setBadge(b, res);
+        done++;
       }
-      setBadge(b, res);
+    } finally {
+      count.textContent = "";
+      btn.disabled = false;
+      btn.classList.remove("bnb-run");
+      running = false;
     }
   }
 
-  run();
+  function injectButton(section) {
+    const head = section.querySelector(".panel-heading-list");
+    if (!head || head.querySelector(".bnb-reload-all")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "bnb-reload-all";
+    btn.title = "Vérifier la disponibilité à la bibliothèque\n(résultats gardés 2 jours — Maj + clic : tout revérifier)";
+    btn.setAttribute("aria-label", "Vérifier la disponibilité à la bibliothèque");
+    btn.innerHTML = svg("reload") + '<span class="bnb-count"></span>';
+    btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); runAll(e.shiftKey, btn); });
+    head.appendChild(btn);
+  }
 
-  // Le site charge parfois la liste en différé / par pagination → on réobserve
+  showCached();
+
+  // Le site charge parfois la liste en différé / par pagination → on réaffiche la mémoire (sans appel réseau)
   let timer;
   new MutationObserver(() => {
     clearTimeout(timer);
-    timer = setTimeout(run, 800);
+    timer = setTimeout(showCached, 800);
   }).observe(document.body, { childList: true, subtree: true });
 })();

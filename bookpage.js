@@ -32,11 +32,11 @@
   };
 
   const svg = (name) =>
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1.15em" height="1.15em" fill="currentColor" aria-hidden="true"><path d="${P[name]}"/></svg>`;
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true"><path d="${P[name]}"/></svg>`;
 
   const style = document.createElement("style");
   style.textContent = `
-    .bnb-wrap{display:inline-flex;align-items:center;gap:6px;margin-left:10px;vertical-align:middle}
+    .bnb-wrap{display:inline-flex;align-items:center;gap:4px;margin-left:8px;vertical-align:middle;font-size:inherit;line-height:1}
     .bnb-reload{display:inline-flex;align-items:center;justify-content:center;padding:2px;border:0;background:none;
       color:inherit;cursor:pointer;line-height:1;opacity:.75;border-radius:50%}
     .bnb-reload:hover{opacity:1;transform:rotate(60deg);transition:transform .2s}
@@ -67,20 +67,24 @@
     return { title, author, isbn: "" };
   }
 
-  // ---------- Repérage de la ligne « N notes | N commentaires | N extraits » ----------
+  // ---------- Repérage de « N extraits » (fin de la ligne notes | commentaires | extraits) ----------
   // ⚠️ Si Booknode change son HTML, c'est ici qu'il faut ajuster.
-  function findStatsLine() {
-    const re = /\d[\d\s\u00a0.]*\s*notes?\b[\s\S]*commentaires?[\s\S]*extraits?/i;
-    const h1 = document.querySelector("h1");
-    const root = h1?.closest("main, article, section, div[class*=content], div") ?? document.body;
+  // Retourne un nœud (élément ou texte) après lequel insérer le bouton.
+  function findExtraitsAnchor() {
+    const re = /^\s*\d[\d\s\u00a0.,]*\s*extraits?\s*$/i; // « 147 extraits » (pas « Extraits 147 » du menu)
+    // 1) un élément qui ne contient que « 147 extraits »
     let best = null;
-    for (const el of root.querySelectorAll("div, p, span, li")) {
-      const t = el.textContent;
-      if (t.length > 200 || !re.test(t)) continue;
-      // le plus petit élément qui contient toute la ligne
-      if (!best || best.contains(el)) best = el;
+    for (const el of document.querySelectorAll("a, span, div, p, li, small, b, strong, em")) {
+      if (el.closest(".bnb-wrap") || !re.test(el.textContent)) continue;
+      if (!best || best.contains(el)) best = el; // le plus petit
     }
-    return best;
+    if (best) return best;
+    // 2) repli : texte brut « … | 147 extraits » à la fin d'un élément
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (/\d\s*extraits?\s*$/i.test(n.nodeValue) && !n.parentElement.closest("nav, .bnb-wrap, script, style")) return n;
+    }
+    return null;
   }
 
   // ---------- Affichage ----------
@@ -93,7 +97,7 @@
     a.style.color = s.color;
     a.title = s.label + (key === "error" ? (REASONS[res?.reason] || ` (${res?.reason || "inconnue"})`) : "")
       + (key === "error" && res?.message ? `\n${res.message}` : "");
-    a.innerHTML = svg(s.icon) + `<span style="margin-left:4px;font-size:.9em">${s.label}</span>`;
+    a.innerHTML = svg(s.icon);
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     if (res?.url) a.href = res.url;
@@ -124,8 +128,8 @@
 
   function inject() {
     if (document.querySelector(".bnb-wrap")) return;
-    const line = findStatsLine() ?? document.querySelector("h1");
-    if (!line) return;
+    const anchor = findExtraitsAnchor();
+    if (!anchor) return; // ligne pas (encore) affichée : l'observateur réessaiera
 
     const wrap = document.createElement("span");
     wrap.className = "bnb-wrap";
@@ -137,7 +141,7 @@
     btn.innerHTML = svg("reload");
     btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); check(wrap, btn); });
     wrap.appendChild(btn);
-    line.appendChild(wrap);
+    anchor.after(wrap);
   }
 
   inject();
