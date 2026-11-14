@@ -7,9 +7,11 @@
 // La page d'options et le background s'adaptent automatiquement.
 // ============================================================
 import { ArchimedAdapter } from "./archimed.js";
+import { C3rbAdapter } from "./c3rb.js";
 
 export const ADAPTERS = [
   ArchimedAdapter,
+  C3rbAdapter,
   // KohaAdapter,
   // PmbAdapter,
   // WaterbearAdapter,

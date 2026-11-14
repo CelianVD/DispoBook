@@ -17,9 +17,14 @@ Une pastille apparaît en haut à droite de chaque livre :
 
 Un clic sur la pastille ouvre la recherche correspondante dans le catalogue.
 
+## Sur la page d'un livre
+
+Sur la page de n'importe quel livre Booknode, un bouton **↻** apparaît à droite de la ligne « N notes | N commentaires | N extraits ». Un clic lance la vérification au catalogue pour ce livre (sans l'ajouter à *Mes envies*) et affiche la pastille correspondante. Un nouveau clic relance la recherche en ignorant le cache.
+
 ## Catalogues pris en charge
 
 - **Archimed / Syracuse**
+- **C3RB Informatique / Portail Orphée**
 
 L'architecture est faite pour ajouter d'autres systèmes (Koha, PMB, Waterbear…), voir [Ajouter un catalogue](#ajouter-un-catalogue).
 
@@ -50,17 +55,19 @@ La page de réglages s'ouvre automatiquement à la première installation. Vous 
 2. Saisissez l'**URL de base** de votre bibliothèque, sans chemin de recherche.
 3. Cliquez sur **Enregistrer** et **acceptez l'autorisation d'accès** au site du catalogue, sinon la vérification ne peut pas fonctionner.
 
-Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio` : les pastilles se chargent livre par livre.
+Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio`. **Rien n'est envoyé au catalogue au chargement** : seules les pastilles déjà en mémoire (2 jours) s'affichent. Cliquez sur le bouton **↻** à côté du titre « Mes envies » pour vérifier les livres qui n'ont pas de résultat récent (un compteur indique la progression). **Maj + clic** revérifie tous les livres en ignorant la mémoire.
 
 ## Fonctionnement
 
-1. Le *content script* (`content.js`) repère la section « Mes envies » et extrait le titre et l'auteur de chaque livre.
-2. Il envoie chaque livre au *background* (`background.js`), qui gère la file d'attente, le cache et les erreurs.
+1. Le *content script* (`content.js`) repère la section « Mes envies » et extrait le titre et l'auteur de chaque livre. Au chargement il affiche la mémoire ; au clic sur ↻ il envoie les livres sans résultat récent, un par un, au *background* (`background.js`), qui gère la file d'attente, le cache et les erreurs.
 3. L'adaptateur du catalogue interroge le portail. Pour Syracuse :
    - `POST /Portal/Recherche/Search.svc/Search` retourne les notices ;
    - `POST /Portal/Services/ILSClient.svc/CheckAvailability` retourne les exemplaires disponibles.
 
    Syracuse est une application monopage : le HTML de `search.aspx` ne contient pas les résultats, d'où l'appel direct à ces services.
+   Pour C3RB / Orphée (pages rendues côté serveur) :
+   - `GET /recherche-simple/simple/Mots+Notice/-1/<mots>/perso` retourne la liste des notices ;
+   - `GET /detail-dune-notice/notice/<id>` est lue pour chaque notice retenue (3 au maximum) : la colonne **Situation** du tableau « Exemplaires » donne `En rayon` (disponible) ou `Sorti/demandée` (emprunté). Un exemplaire en rayon mais en « consultation sur place » / « exclu du prêt » n'est pas compté comme disponible.
 4. Le résultat est affiché sous forme de pastille.
 
 ### Requêtes de recherche
@@ -76,8 +83,8 @@ Une notice n'est retenue que si au moins 60 % des mots du titre y apparaissent, 
 
 - 1 seconde minimum entre deux appels, un livre à la fois.
 - En cas de « Trop de requêtes » (HTTP 429/503 ou message dans la réponse) : pause de 30 s, puis 60 s, 90 s… jusqu'à 120 s, avec 3 tentatives.
-- **Cache** : 6 h pour « disponible » et « emprunté », 24 h pour « non trouvé ». Les erreurs ne sont pas mises en cache.
-- Le cache est vidé automatiquement quand vous changez de catalogue. Le bouton **Vider le cache** des réglages le vide à la main.
+- **Mémoire de 2 jours** pour tous les résultats (« disponible », « emprunté », « non trouvé »). Les erreurs ne sont pas mises en mémoire. Les entrées périmées sont supprimées automatiquement.
+- Le cache est vidé automatiquement quand vous changez de catalogue. Le bouton **Vider le cache** des réglages le vide à la main. Le bouton ↻ d'une page livre ignore toujours la mémoire.
 
 ## Confidentialité
 
@@ -89,12 +96,14 @@ Seuls le **titre** et l'**auteur** des livres sont envoyés au site de votre bib
 booknode-biblio/
 ├── manifest.json        Manifest V3 (Firefox + Chrome)
 ├── background.js        File d'attente, cache, anti-rate-limit, appels réseau
-├── content.js           Lecture de Booknode + affichage des pastilles
+├── content.js           Lecture de « Mes envies » + affichage des pastilles
+├── bookpage.js          Bouton ↻ sur la page d'un livre
 ├── options.html         Page de réglages
 ├── options.js           Lecture / sauvegarde des réglages
 └── adapters/
     ├── index.js         Registre des adaptateurs
-    └── archimed.js      Adaptateur Archimed / Syracuse
+    ├── archimed.js      Adaptateur Archimed / Syracuse
+    └── c3rb.js          Adaptateur C3RB Informatique / Orphée
 ```
 
 ## Ajouter un catalogue
@@ -115,11 +124,12 @@ Votre bibliothèque municipale ou universitaire n'est pas encore supportée ? Vo
 | Pastille ❓ « trop de requêtes » | Attendez quelques minutes et rechargez. Au besoin, augmentez `MIN_DELAY_MS` dans `background.js`. |
 | Pastille ❓ « Réponse Search inattendue » | Le format du portail diffère : copiez le message affiché au survol et adaptez `adapters/archimed.js`. |
 | Un livre présent est « non trouvé » | Vérifiez la recherche en cliquant sur la pastille. Les titres Booknode (traductions, éditions) peuvent différer de ceux du catalogue. |
-| Un ancien résultat persiste | Cliquez sur **Vider le cache** dans les réglages. |
-| Aucune pastille | Vérifiez que vous êtes sur `booknode.com/profil/…/biblio` et que la section s'appelle bien « Mes envies ». Si Booknode a changé son HTML, ajustez `findWishSection` et `extractBooks` dans `content.js`. |
+| Un ancien résultat persiste | **Maj + clic** sur ↻, ou **Vider le cache** dans les réglages. |
+| Aucune pastille | Vérifiez que vous êtes sur `booknode.com/profil/…/biblio` et que la section s'appelle bien « Mes envies ». Si Booknode a changé son HTML, ajustez `findWishSection` et `extractBooks` dans `content.js`.
+| Pas de bouton ↻ sur une page livre | Le bouton se place après la ligne « notes / commentaires / extraits » : ajustez `findStatsLine` (et `readBook` pour le titre / l'auteur) dans `bookpage.js`. | |
 
 ## Limites
 
 - Booknode n'a pas d'API : l'extension lit le HTML de la page, qui peut changer.
-- La détection de la disponibilité dépend du format des réponses du portail Syracuse et peut demander un ajustement selon la bibliothèque.
+- La détection de la disponibilité dépend du format des réponses du portail (Syracuse, Orphée) et peut demander un ajustement selon la bibliothèque. Sur Orphée, l'adresse de recherche (`/recherche-simple/…`) est un alias de menu Joomla : si votre portail l'a renommé, adaptez `buildSearchUrl` dans `adapters/c3rb.js`.
 - Seule la section « Mes envies » est vérifiée.

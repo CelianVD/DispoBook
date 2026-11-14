@@ -7,10 +7,12 @@ import { getAdapter, DEFAULT_ADAPTER_ID } from "./adapters/index.js";
 const api = globalThis.browser ?? globalThis.chrome;
 
 const CACHE_KEY = "resultCache";
+const CACHE_TTL_MS = 2 * 24 * 3600 * 1000; // 48 h
 const CACHE_TTL = {
-  available: 6 * 3600 * 1000,   // 6 h : la dispo change vite
-  borrowed: 6 * 3600 * 1000,
-  notfound: 24 * 3600 * 1000,   // 24 h : un titre absent change rarement
+  // Mémoire de 2 jours pour tous les résultats (le bouton ↻ force une mise à jour)
+  available: CACHE_TTL_MS,
+  borrowed: CACHE_TTL_MS,
+  notfound: CACHE_TTL_MS,
 };
 const MIN_DELAY_MS = 1000;      // délai minimal entre deux appels réseau (catalogues = rate limit strict)
 const FETCH_TIMEOUT_MS = 15000;
@@ -37,6 +39,11 @@ async function readCache() {
 }
 
 async function writeCache(cache) {
+  // On jette les entrées périmées pour que le cache ne grossisse pas indéfiniment
+  const now = Date.now();
+  for (const [k, v] of Object.entries(cache)) {
+    if (now - v.ts > CACHE_TTL_MS) delete cache[k];
+  }
   await api.storage.local.set({ [CACHE_KEY]: cache });
 }
 
@@ -104,6 +111,49 @@ async function fetchJson(url, body) {
   }
 }
 
+// GET HTML (portails rendus côté serveur, ex. Orphée) : retourne { url, text }
+async function fetchText(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      signal: ctrl.signal,
+      credentials: "include",
+      headers: { "Accept": "text/html,application/xhtml+xml" },
+    });
+    if (res.status === 429 || res.status === 503) throw new RateLimited();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (/trop\s+de\s+requ[êe]tes/i.test(text.slice(0, 5000))) throw new RateLimited();
+    return { url: res.url || url, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Même logique « polie » que politePostJson, pour les GET
+async function politeGetPage(url) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = await enqueue(async () => {
+      const wait = cooldownUntil - Date.now();
+      if (wait > 0) await sleep(wait);
+      try {
+        const page = await fetchText(url);
+        strikes = 0;
+        return { ok: true, page };
+      } catch (e) {
+        if (!(e instanceof RateLimited)) throw e;
+        strikes++;
+        cooldownUntil = Date.now() + Math.min(COOLDOWN_MAX_MS, COOLDOWN_STEP_MS * strikes);
+        return null;
+      }
+    });
+    if (out) return out.page;
+  }
+  throw new RateLimited();
+}
+
 // POST « poli » : respecte la file, attend pendant un blocage, retente 2 fois.
 async function politePostJson(url, body) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -126,8 +176,21 @@ async function politePostJson(url, body) {
   throw new RateLimited();
 }
 
+// Lecture du cache SEULE (aucun appel réseau) : sert à afficher les pastilles au chargement
+async function lookupCached(books) {
+  const settings = await getSettings();
+  if (!settings.baseUrl) return books.map(() => null);
+  const cache = await readCache();
+  return books.map((book) => {
+    const hit = cache[cacheKey(settings, book)];
+    return hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)
+      ? { status: hit.status, url: hit.url, cached: true, ts: hit.ts }
+      : null;
+  });
+}
+
 // ---------- Vérification d'un livre ----------
-async function checkBook(book) {
+async function checkBook(book, force = false) {
   const settings = await getSettings();
   if (!settings.baseUrl) return { status: "error", reason: "not_configured" };
 
@@ -138,8 +201,8 @@ async function checkBook(book) {
   const key = cacheKey(settings, book);
   const cache = await readCache();
   const hit = cache[key];
-  if (hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)) {
-    return { status: hit.status, url: hit.url, cached: true };
+  if (!force && hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)) {
+    return { status: hit.status, url: hit.url, cached: true, ts: hit.ts };
   }
 
   // 2) Permission d'accès au domaine du catalogue
@@ -154,7 +217,7 @@ async function checkBook(book) {
 
   try {
     await warmUp(new URL(settings.baseUrl).origin);
-    const ctx = { postJson: politePostJson };
+    const ctx = { postJson: politePostJson, getPage: politeGetPage };
     for (const query of adapter.buildQueries(book).slice(0, MAX_QUERIES_PER_BOOK)) {
       const url = adapter.buildSearchUrl(settings.baseUrl, query);
       const parsed = await adapter.check(ctx, settings.baseUrl, query, book);
@@ -173,16 +236,20 @@ async function checkBook(book) {
   cache[key] = { status: result.status, url: usedUrl, ts: Date.now() };
   await writeCache(cache);
 
-  return { status: result.status, url: usedUrl, cached: false };
+  return { status: result.status, url: usedUrl, cached: false, ts: Date.now() };
 }
 
 // ---------- Messagerie avec le content script ----------
 api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CHECK_BOOK") {
-    checkBook(msg.book)
+    checkBook(msg.book, !!msg.force)
       .then(sendResponse)
       .catch((e) => sendResponse({ status: "error", reason: "exception", message: String(e) }));
     return true; // réponse asynchrone (Firefox + Chrome)
+  }
+  if (msg?.type === "GET_CACHED") {
+    lookupCached(msg.books || []).then(sendResponse).catch(() => sendResponse((msg.books || []).map(() => null)));
+    return true;
   }
   if (msg?.type === "OPEN_OPTIONS") {
     api.runtime.openOptionsPage();
