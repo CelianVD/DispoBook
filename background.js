@@ -7,6 +7,7 @@ import { getAdapter, DEFAULT_ADAPTER_ID } from "./adapters/index.js";
 const api = globalThis.browser ?? globalThis.chrome;
 
 const CACHE_KEY = "resultCache";
+const CACHE_REV = 2; // révision du format / des adaptateurs (voir cacheKey)
 const CACHE_TTL_MS = 2 * 24 * 3600 * 1000; // 48 h
 const CACHE_TTL = {
   // Mémoire de 2 jours pour tous les résultats (le bouton ↻ force une mise à jour)
@@ -49,7 +50,8 @@ async function writeCache(cache) {
 
 function cacheKey(settings, book) {
   const id = book.isbn || `${book.title}|${book.author}`;
-  return `${settings.systemType}|${settings.baseUrl}|${id}`.toLowerCase();
+  // CACHE_REV : à incrémenter quand un adaptateur change, pour ne pas garder d'anciens « non trouvé » erronés
+  return `r${CACHE_REV}|${settings.systemType}|${settings.baseUrl}|${id}`.toLowerCase();
 }
 
 // Vide le cache quand l'utilisateur change de catalogue
@@ -86,7 +88,7 @@ async function warmUp(base) {
   finally { clearTimeout(timer); }
 }
 
-async function fetchJson(url, body) {
+async function fetchJson(url, body, extraHeaders = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -98,6 +100,7 @@ async function fetchJson(url, body) {
         "Content-Type": "application/json; charset=utf-8",
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "X-Requested-With": "XMLHttpRequest",
+        ...extraHeaders,
       },
       body: JSON.stringify(body),
     });
@@ -105,6 +108,27 @@ async function fetchJson(url, body) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.text();
     if (/trop\s+de\s+requ[êe]tes/i.test(raw)) throw new RateLimited();
+    return JSON.parse(raw);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// GET JSON (ex. V-Smart : appels de disponibilité) : retourne le JSON, ou lève « HTTP <code> »
+async function fetchJsonGet(url, extraHeaders = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      signal: ctrl.signal,
+      credentials: "include",
+      headers: { "Accept": "application/json, text/javascript, */*; q=0.01", "X-Requested-With": "XMLHttpRequest", ...extraHeaders },
+    });
+    if (res.status === 429 || res.status === 503) throw new RateLimited();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.text();
+    if (/trop\s+de\s+requ[êe]tes/i.test(raw.slice(0, 2000))) throw new RateLimited();
     return JSON.parse(raw);
   } finally {
     clearTimeout(timer);
@@ -154,14 +178,36 @@ async function politeGetPage(url) {
   throw new RateLimited();
 }
 
-// POST « poli » : respecte la file, attend pendant un blocage, retente 2 fois.
-async function politePostJson(url, body) {
+// GET JSON « poli » (même file d'attente et mêmes pauses que les autres appels)
+async function politeGetJson(url, headers) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = await enqueue(async () => {
       const wait = cooldownUntil - Date.now();
       if (wait > 0) await sleep(wait);
       try {
-        const j = await fetchJson(url, body);
+        const j = await fetchJsonGet(url, headers);
+        strikes = 0;
+        return { ok: true, j };
+      } catch (e) {
+        if (!(e instanceof RateLimited)) throw e;
+        strikes++;
+        cooldownUntil = Date.now() + Math.min(COOLDOWN_MAX_MS, COOLDOWN_STEP_MS * strikes);
+        return null;
+      }
+    });
+    if (out) return out.j;
+  }
+  throw new RateLimited();
+}
+
+// POST « poli » : respecte la file, attend pendant un blocage, retente 2 fois.
+async function politePostJson(url, body, headers) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = await enqueue(async () => {
+      const wait = cooldownUntil - Date.now();
+      if (wait > 0) await sleep(wait);
+      try {
+        const j = await fetchJson(url, body, headers);
         strikes = 0;
         return { ok: true, j };
       } catch (e) {
@@ -213,17 +259,19 @@ async function checkBook(book, force = false) {
 
   // 3) Requêtes (par ordre de priorité) via la file d'attente
   let result = { status: "notfound" };
+  const debugLines = []; // diagnostic affiché au survol de la pastille (adaptateurs qui en fournissent)
   let usedUrl = adapter.buildSearchUrl(settings.baseUrl, adapter.buildQueries(book)[0] || book.title);
 
   try {
     await warmUp(new URL(settings.baseUrl).origin);
-    const ctx = { postJson: politePostJson, getPage: politeGetPage };
+    const ctx = { postJson: politePostJson, getJson: politeGetJson, getPage: politeGetPage };
     for (const query of adapter.buildQueries(book).slice(0, MAX_QUERIES_PER_BOOK)) {
       const url = adapter.buildSearchUrl(settings.baseUrl, query);
       const parsed = await adapter.check(ctx, settings.baseUrl, query, book);
       usedUrl = url;
       if (parsed.status === "error") return { ...parsed, url };
       result = parsed;
+      if (parsed.debug) debugLines.push(parsed.debug);
       if (parsed.status !== "notfound") break; // trouvé : on s'arrête
     }
   } catch (err) {
@@ -236,7 +284,7 @@ async function checkBook(book, force = false) {
   cache[key] = { status: result.status, url: usedUrl, ts: Date.now() };
   await writeCache(cache);
 
-  return { status: result.status, url: usedUrl, cached: false, ts: Date.now() };
+  return { status: result.status, url: usedUrl, cached: false, ts: Date.now(), debug: result.status === "available" ? undefined : debugLines.join("\n") || undefined };
 }
 
 // ---------- Messagerie avec le content script ----------

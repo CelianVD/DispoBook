@@ -12,6 +12,8 @@
 //   parseTitle(html)             : (optionnel) titre de la notice
 //   parseCopies(html)            : (optionnel) "available" | "borrowed" | null
 //   parseList(html, book)        : (optionnel) statut lu directement dans la liste de résultats
+//   verifyBorrowed               : (optionnel) true = un « emprunté » lu dans la liste est revérifié sur la notice
+//                                  (évite les faux « emprunté » si la liste est mal interprétée)
 //   detailUrl(url)               : (optionnel) URL à lire pour les exemplaires
 //   maxCandidates                : (optionnel) notices examinées au maximum (3 par défaut)
 // ============================================================
@@ -205,7 +207,9 @@ export function makeHtmlAdapter(cfg) {
       let candidates;
       if (!cfg.isDetailUrl?.(page.url) && cfg.parseList) {
         const r = cfg.parseList(page.text, book); // disponibilité lue directement dans la liste
-        if (r) return { status: r };
+        if (r === "available" || r === "notfound") return { status: r };
+        if (r === "borrowed" && !cfg.verifyBorrowed) return { status: r };
+        // r === null, ou « emprunté » à confirmer : on lit les notices (repli ci-dessous)
       }
       if (cfg.isDetailUrl?.(page.url)) {
         // Un seul résultat : redirection directe vers la notice

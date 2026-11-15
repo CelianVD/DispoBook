@@ -107,6 +107,7 @@
     };
     a.title = s.label + (key === "error" ? (REASONS[res?.reason] || ` (${res?.reason || "inconnue"})`) : "")
       + (key === "error" && res?.message ? `\n${res.message}` : "")
+      + (res?.debug ? `\n${res.debug}` : "")
       + (res?.ts ? `\nVérifié ${ago(res.ts)}` : "");
     a.innerHTML = svg(s.icon);
     a.target = "_blank";

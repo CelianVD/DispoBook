@@ -24,8 +24,9 @@ function parseCopies(html) {
     .map((m) => normalize(htmlToText(m[1])));
   const iStatus = headers.findIndex((h) => /statut|disponibilit|situation/.test(h));
 
-  // Balise Koha standard d'un exemplaire disponible
+  // Signaux Koha standard d'un exemplaire disponible : badge « item-status available » ou microdonnée InStock
   if (/<span[^>]*class="[^"]*\bitem-status\b[^"]*\bavailable\b/i.test(table)) return "available";
+  if (/schema\.org\/InStock/i.test(table)) return "available";
 
   let sawCopy = false;
   const body = table.match(/<tbody[\s\S]*?<\/tbody>/i)?.[0] || table;
@@ -74,6 +75,7 @@ export const KohaAdapter = makeHtmlAdapter({
   parseTitle,
   parseCopies,
   parseList,
+  verifyBorrowed: true, // un « emprunté » de la liste est confirmé sur la notice (faux orange constaté)
 });
 
 // Exposé pour les tests
