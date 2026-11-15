@@ -25,8 +25,14 @@ Sur la page de n'importe quel livre Booknode, un bouton **↻** apparaît à dro
 
 - **Archimed / Syracuse**
 - **C3RB Informatique / Portail Orphée**
+- **Koha** (OPAC)
+- **AFI Nanook** et **Bokeh**
+- **Decalog SIGB** *(non testé)*
+- **Quria (Axiell)** *(non testé)*
+- **Sapientia (Microbib)** *(non testé)*
+- **V-Smart (Axiell)** *(expérimental : URL de l'API à confirmer)*
 
-L'architecture est faite pour ajouter d'autres systèmes (Koha, PMB, Waterbear…), voir [Ajouter un catalogue](#ajouter-un-catalogue).
+L'architecture est faite pour ajouter d'autres systèmes (PMB, Waterbear…), voir [Ajouter un catalogue](#ajouter-un-catalogue).
 
 ## Installation
 ### Depuis addons.mozilla.org
@@ -102,8 +108,15 @@ booknode-biblio/
 ├── options.js           Lecture / sauvegarde des réglages
 └── adapters/
     ├── index.js         Registre des adaptateurs
+    ├── common.js        Outils partagés + moteur générique (makeHtmlAdapter)
     ├── archimed.js      Adaptateur Archimed / Syracuse
-    └── c3rb.js          Adaptateur C3RB Informatique / Orphée
+    ├── c3rb.js          Adaptateur C3RB Informatique / Orphée
+    ├── vsmart.js        Adaptateur V-Smart (Axiell)
+    ├── koha.js          Adaptateur Koha
+    ├── afi.js           Adaptateurs AFI Nanook et Bokeh
+    ├── decalog.js       Adaptateur Decalog SIGB
+    ├── quria.js         Adaptateur Quria (Axiell)
+    └── sapientia.js     Adaptateur Sapientia (Microbib)
 ```
 
 ## Ajouter un catalogue
