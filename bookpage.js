@@ -67,24 +67,39 @@
     return { title, author, isbn: "" };
   }
 
-  // ---------- Repérage de « N extraits » (fin de la ligne notes | commentaires | extraits) ----------
+  // ---------- Repérage de la fin de la ligne « N notes | N commentaires | N extraits » ----------
+  // Selon le livre, la ligne peut être « 9 notes | 1 commentaire », « 6 687 notes | 981 commentaires | 147 extraits »
+  // ou juste « 3 notes ». On part de « N notes », puis on cherche le dernier « N commentaires » / « N extraits »
+  // de la même ligne : le bouton se met juste après. Sans eux, il se met juste après « N notes ».
   // ⚠️ Si Booknode change son HTML, c'est ici qu'il faut ajuster.
-  // Retourne un nœud (élément ou texte) après lequel insérer le bouton.
-  function findExtraitsAnchor() {
-    const re = /^\s*\d[\d\s\u00a0.,]*\s*extraits?\s*$/i; // « 147 extraits » (pas « Extraits 147 » du menu)
-    // 1) un élément qui ne contient que « 147 extraits »
-    let best = null;
-    for (const el of document.querySelectorAll("a, span, div, p, li, small, b, strong, em")) {
-      if (el.closest(".bnb-wrap") || !re.test(el.textContent)) continue;
-      if (!best || best.contains(el)) best = el; // le plus petit
+  const NUM = "\\d[\\d\\s\\u00a0.,]*";
+  const NOTES_RE = new RegExp(`^[^\\p{L}\\d]*${NUM}\\s*notes?\\s*$`, "iu");
+  const COUNT_RE = new RegExp(`^\\s*${NUM}\\s*(?:commentaires?|extraits?)\\s*$`, "iu");
+  const TAGS = "a, span, div, p, li, small, b, strong, em";
+
+  function findLineEnd() {
+    const inScope = (el) => !el.closest("nav, .bnb-wrap, script, style");
+
+    // 1) l'élément « N notes » (le plus grand qui ne contient que ça)
+    const notes = [...document.querySelectorAll(TAGS)].filter((el) => inScope(el) && NOTES_RE.test(el.textContent));
+    const notesEl = notes.find((el) => !notes.some((o) => o !== el && o.contains(el)));
+    if (!notesEl) return null;
+
+    // 2) les « N commentaires » / « N extraits » proches (3 niveaux au plus), le dernier dans la page
+    const counts = [...document.querySelectorAll(TAGS)].filter((el) => inScope(el) && COUNT_RE.test(el.textContent));
+    const outer = counts.filter((el) => !counts.some((o) => o !== el && o.contains(el)));
+    const top = notesEl.getBoundingClientRect().top;
+    const near = (el) => {
+      const t = el.getBoundingClientRect().top;
+      return !top || !t || Math.abs(t - top) < 40; // sans mise en page (tests) : pas de contrôle
+    };
+    let scope = notesEl;
+    for (let i = 0; i < 3 && scope.parentElement; i++) {
+      scope = scope.parentElement;
+      const inside = outer.filter((el) => scope.contains(el) && !el.contains(notesEl) && near(el));
+      if (inside.length) return inside[inside.length - 1]; // dernier dans l'ordre du document
     }
-    if (best) return best;
-    // 2) repli : texte brut « … | 147 extraits » à la fin d'un élément
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (/\d\s*extraits?\s*$/i.test(n.nodeValue) && !n.parentElement.closest("nav, .bnb-wrap, script, style")) return n;
-    }
-    return null;
+    return notesEl;
   }
 
   // ---------- Affichage ----------
@@ -128,8 +143,10 @@
 
   function inject() {
     if (document.querySelector(".bnb-wrap")) return;
-    const anchor = findExtraitsAnchor();
-    if (!anchor) return; // ligne pas (encore) affichée : l'observateur réessaiera
+    // Structure réelle de Booknode : <div class="top-stat-line"> notes | commentaires | extraits | 🏆 … </div>
+    const statLine = document.querySelector(".top-stat-line");
+    const end = statLine ? null : findLineEnd(); // repli heuristique si Booknode renomme la classe
+    if (!statLine && !end) return; // ligne pas (encore) affichée : l'observateur réessaiera
 
     const wrap = document.createElement("span");
     wrap.className = "bnb-wrap";
@@ -141,7 +158,8 @@
     btn.innerHTML = svg("reload");
     btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); check(wrap, btn); });
     wrap.appendChild(btn);
-    anchor.after(wrap);
+    if (statLine) statLine.appendChild(wrap); // tout à la fin de la ligne (après 🏆 s'il y en a un)
+    else end.after(wrap);
   }
 
   inject();
