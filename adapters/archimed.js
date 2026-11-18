@@ -66,29 +66,57 @@ function collectStrings(v, out = [], depth = 0) {
   return out;
 }
 
-/** Extrait les notices (id, base, type, titre) du HTML de résultats. */
+/** Extrait les notices (id, base, type, titre, auteurs, statut) du HTML de résultats. */
 function parseNotices(html) {
   const re = /<div class="notice notice_courte[^"]*"[^>]*?data-base="([^"]*)"[^>]*?data-id="([^"]*)"/g;
   const hits = [...html.matchAll(re)];
   return hits.map((m, i) => {
-    const chunk = html.slice(m.index, hits[i + 1]?.index ?? html.length);
+    let chunk = html.slice(m.index, hits[i + 1]?.index ?? html.length);
+    // La dernière notice « traîne » le reste de la page (modale « Vérification des exemplaires
+    // disponibles ... », pagination…) : on s'arrête à la fin de <li> de la notice.
+    const end = chunk.search(/<\/li>/i);
+    if (end > 0) chunk = chunk.slice(0, end);
     const title =
       decodeEntities(chunk.match(/<h3[^>]*class="[^"]*title[^"]*"[^>]*title="([^"]*)"/)?.[1] || "") ||
       htmlToText(chunk.match(/<h3[\s\S]*?<\/h3>/)?.[0] || "");
     const type = chunk.match(/\/Cover\/[^/]+\/([A-Z_]+)\//)?.[1] || "MONO";
-    return { docbase: m[1], id: m[2], type, title, chunk };
+    // Liens auteurs : « Delaney, Joseph (1945-....). Auteur » / « … Antécédent bibliographique »
+    const authors = [...chunk.matchAll(/<a[^>]*class="tarzan"[^>]*>([^<]*)<\/a>/g)].map((a) => htmlToText(a[1]));
+    // Bloc statut (vide / « statut-loading » tant que CheckAvailability n'a pas répondu)
+    const statut = chunk.match(/class="statut"[^>]*>([\s\S]*)$/)?.[1] || "";
+    return { docbase: m[1], id: m[2], type, title, authors, statut, chunk };
   });
+}
+
+/**
+ * L'auteur cherché doit être l'auteur de la notice : dans le titre (« / Joseph Delaney »)
+ * ou dans un lien auteur sans rôle secondaire. Évite de prendre une adaptation en BD
+ * (où il n'est que « Antécédent bibliographique ») pour le roman.
+ */
+const SECONDARY_ROLE = /ant[ée]c[ée]dent|illustrat|pr[ée]fac|traduct|postfac|adaptat/i;
+function authorMatches(notice, author = "") {
+  const last = normalize(author).split(" ").filter((w) => w.length > 2).pop();
+  if (!last) return true;
+  if (normalize(notice.title).includes(last)) return true;
+  return notice.authors.some((a) => normalize(a).includes(last) && !SECONDARY_ROLE.test(a));
 }
 
 const BORROWED = /indisponible|unavailable|emprunt[ée]|en\s+pr[êe]t|date\s+de\s+retour|retour\s+pr[ée]vu|aucun\s+exemplaire\s+disponible/i;
 
-/** Lit la disponibilité dans la réponse (HTML ou JSON stringifié). */
-function readAvailability(text) {
+/**
+ * Lit la disponibilité dans le bloc statut (HTML brut) ou la réponse CheckAvailability.
+ * Marqueurs Syracuse : class="available indicator" / "not-available-here" / "loaned-elsewhere".
+ */
+function readAvailability(raw) {
+  const html = raw.replace(/V[ée]rification des exemplaires[^<]*/gi, " ");
+  const text = htmlToText(html);
   const n = text.match(/(\d+)\s+exemplaires?\s+disponibles?/i);
   if (n && parseInt(n[1], 10) > 0) return "available";
-  if (BORROWED.test(text)) return "borrowed";
-  if (/class="[^"]*\bavailable\b/i.test(text) || /(?<!in)disponible|en\s+rayon/i.test(text)) return "available";
-  return null; // illisible
+  if (/class="[^"]*(?<![\w-])available(?![\w-])/i.test(html)) return "available";
+  if (/class="[^"]*(not-available|unavailable|loaned)/i.test(html) || BORROWED.test(text)) return "borrowed";
+  // « disponible à/en… » ; surtout pas « autres disponibilités » ni « exemplaires disponibles ... »
+  if (/(?<!in)disponible\s+(?:à|a|en|dans|au)\s/i.test(text) || /en\s+rayon/i.test(text)) return "available";
+  return null; // illisible / pas encore chargé
 }
 
 export const ArchimedAdapter = {
@@ -143,6 +171,7 @@ export const ArchimedAdapter = {
     const { series, subtitle } = splitTitle(book.title);
     const words = normalize(subtitle || series).split(" ").filter((w) => w.length > 2);
     const matching = notices.filter((n) => {
+      if (!authorMatches(n, book.author)) return false;
       if (!words.length) return true;
       const t = normalize(n.title);
       return words.filter((w) => t.includes(w)).length / words.length >= 0.6;
@@ -150,7 +179,7 @@ export const ArchimedAdapter = {
     if (!matching.length) return { status: "notfound" };
 
     // 3) Disponibilité (parfois déjà dans le HTML, sinon via CheckAvailability)
-    let verdicts = matching.map((n) => readAvailability(htmlToText(n.chunk.match(/class="statut"[\s\S]*$/)?.[0] || ""))).filter(Boolean);
+    let verdicts = matching.map((n) => readAvailability(n.statut)).filter(Boolean);
     if (!verdicts.length) {
       const guid = (globalThis.crypto?.randomUUID?.() || String(Date.now()));
       const avail = await ctx.postJson(`${base}/Portal/Services/ILSClient.svc/CheckAvailability`, {
@@ -165,12 +194,20 @@ export const ArchimedAdapter = {
           Url: searchUrl, UseSpellChecking: null,
         },
       });
-      const text = htmlToText(collectStrings(avail).join(" ")) + " " + collectStrings(avail).join(" ");
-      const v = readAvailability(text);
+      // Réponse réelle : { d: [ { HtmlView, Id:{RscId}, ItemHoldings:{HoldingLabel, Availability} } ] }
+      // On lit chaque exemplaire séparément (un « disponible » suffit), sinon texte brut en repli.
+      const recs = Array.isArray(avail?.d) ? avail.d : [];
+      const perRecord = recs
+        .map((r) => readAvailability(`${r?.HtmlView || ""} ${r?.ItemHoldings?.HoldingLabel || ""}`))
+        .filter(Boolean);
+      const v = perRecord.length
+        ? (perRecord.includes("available") ? "available" : "borrowed")
+        : readAvailability(collectStrings(avail).join(" "));
       if (v) verdicts = [v];
+      else return { status: "error", reason: "parse", message: "Disponibilité illisible : " + JSON.stringify(avail).slice(0, 300) };
     }
 
     if (verdicts.includes("available")) return { status: "available" };
-    return { status: "borrowed" }; // notice trouvée, aucun exemplaire libre (ou statut illisible)
+    return { status: "borrowed" }; // notice trouvée, aucun exemplaire libre
   },
 };

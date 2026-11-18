@@ -7,7 +7,7 @@ import { getAdapter, DEFAULT_ADAPTER_ID } from "./adapters/index.js";
 const api = globalThis.browser ?? globalThis.chrome;
 
 const CACHE_KEY = "resultCache";
-const CACHE_REV = 3; // révision du format / des adaptateurs (voir cacheKey)
+const CACHE_REV = 4; // révision du format / des adaptateurs (voir cacheKey)
 const CACHE_TTL_MS = 2 * 24 * 3600 * 1000; // 48 h
 const CACHE_TTL = {
   // Mémoire de 2 jours pour tous les résultats (le bouton ↻ force une mise à jour)
