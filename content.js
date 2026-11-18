@@ -92,33 +92,48 @@
     return h < 48 ? `il y a ${h} h` : `il y a ${Math.round(h / 24)} j`;
   }
 
-  function setBadge(book, res) {
-    clearMarks(book.anchor);
-    const key = STATES[res?.status] ? res.status : "error";
+  const REASONS = {
+    not_configured: " — ajoutez une médiathèque dans les options",
+    no_permission: " — accès au site du catalogue non autorisé (ouvrez les options et enregistrez)",
+    rate_limited: " — le catalogue limite les requêtes, rechargez la page plus tard",
+    network: " — catalogue injoignable",
+    bad_url: " — URL du catalogue invalide (voir les options)",
+  };
+
+  // Une pastille pour une médiathèque (entry = résultat d'une médiathèque)
+  function makeBadge(entry, showName) {
+    const key = STATES[entry?.status] ? entry.status : "error";
     const s = STATES[key];
     const a = document.createElement("a");
     a.className = "bnb-badge";
     a.style.color = s.color;
-    const REASONS = {
-      not_configured: " — configurez l'URL dans les options",
-      no_permission: " — accès au site du catalogue non autorisé (ouvrez les options et enregistrez)",
-      rate_limited: " — le catalogue limite les requêtes, rechargez la page plus tard",
-      network: " — catalogue injoignable",
-    };
-    a.title = s.label + (key === "error" ? (REASONS[res?.reason] || ` (${res?.reason || "inconnue"})`) : "")
-      + (key === "error" && res?.message ? `\n${res.message}` : "")
-      + (res?.debug ? `\n${res.debug}` : "")
-      + (res?.ts ? `\nVérifié ${ago(res.ts)}` : "");
+    a.title = (showName && entry?.name ? `${entry.name} : ` : "") + s.label
+      + (key === "error" ? (REASONS[entry?.reason] || ` (${entry?.reason || "inconnue"})`) : "")
+      + (key === "error" && entry?.message ? `\n${entry.message}` : "")
+      + (entry?.debug ? `\n${entry.debug}` : "")
+      + (entry?.ts ? `\nVérifié ${ago(entry.ts)}` : "");
     a.innerHTML = svg(s.icon);
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    if (res?.url) a.href = res.url;
+    if (entry?.url) a.href = entry.url;
     else {
       // Pas d'URL (non configuré / erreur) → ouvre les options
       a.href = "#";
       a.addEventListener("click", (e) => { e.preventDefault(); api.runtime.sendMessage({ type: "OPEN_OPTIONS" }); });
     }
-    book.anchor.insertAdjacentElement("afterend", a);
+    return a;
+  }
+
+  // Une pastille par médiathèque (dans l'ordre des réglages), chacune cliquable vers SON catalogue
+  function setBadge(book, res) {
+    clearMarks(book.anchor);
+    const entries = res?.libraries?.length ? res.libraries : [res];
+    let prev = book.anchor;
+    for (const entry of entries) {
+      const a = makeBadge(entry, entries.length > 1);
+      prev.insertAdjacentElement("afterend", a);
+      prev = a;
+    }
   }
 
   function addLoader(book) {
@@ -194,8 +209,8 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "bnb-reload-all";
-    btn.title = "Vérifier la disponibilité à la bibliothèque\n(résultats gardés 2 jours — Maj + clic : tout revérifier)";
-    btn.setAttribute("aria-label", "Vérifier la disponibilité à la bibliothèque");
+    btn.title = "Vérifier la disponibilité dans vos médiathèques\n(résultats gardés 2 jours — Maj + clic : tout revérifier)";
+    btn.setAttribute("aria-label", "Vérifier la disponibilité dans vos médiathèques");
     btn.innerHTML = svg("reload") + '<span class="bnb-count"></span>';
     btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); runAll(e.shiftKey, btn); });
     head.appendChild(btn);

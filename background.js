@@ -7,7 +7,7 @@ import { getAdapter, DEFAULT_ADAPTER_ID } from "./adapters/index.js";
 const api = globalThis.browser ?? globalThis.chrome;
 
 const CACHE_KEY = "resultCache";
-const CACHE_REV = 2; // révision du format / des adaptateurs (voir cacheKey)
+const CACHE_REV = 3; // révision du format / des adaptateurs (voir cacheKey)
 const CACHE_TTL_MS = 2 * 24 * 3600 * 1000; // 48 h
 const CACHE_TTL = {
   // Mémoire de 2 jours pour tous les résultats (le bouton ↻ force une mise à jour)
@@ -27,10 +27,29 @@ let strikes = 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Réglages ----------
+// Plusieurs médiathèques : storage.sync.libraries = [{ id, name, systemType, baseUrl }]
+// (les anciens réglages baseUrl / systemType sont convertis à la volée).
 async function getSettings() {
-  const { baseUrl = "", systemType = DEFAULT_ADAPTER_ID } =
-    await api.storage.sync.get(["baseUrl", "systemType"]);
-  return { baseUrl: baseUrl.trim(), systemType };
+  const { libraries, baseUrl = "", systemType = DEFAULT_ADAPTER_ID } =
+    await api.storage.sync.get(["libraries", "baseUrl", "systemType"]);
+  let list = Array.isArray(libraries) ? libraries : [];
+  if (!list.length && baseUrl.trim()) {
+    list = [{ id: "main", name: "", systemType, baseUrl: baseUrl.trim() }];
+  }
+  return {
+    libraries: list
+      .filter((l) => l && typeof l.baseUrl === "string" && l.baseUrl.trim())
+      .map((l, i) => ({
+        id: l.id || `lib${i}`,
+        name: (l.name || "").trim() || hostOf(l.baseUrl),
+        systemType: l.systemType || DEFAULT_ADAPTER_ID,
+        baseUrl: l.baseUrl.trim(),
+      })),
+  };
+}
+
+function hostOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
 // ---------- Cache (storage.local, persistant) ----------
@@ -48,18 +67,12 @@ async function writeCache(cache) {
   await api.storage.local.set({ [CACHE_KEY]: cache });
 }
 
-function cacheKey(settings, book) {
+// Une entrée de cache par médiathèque : changer de catalogue ou en ajouter un ne vide rien
+function cacheKey(lib, book) {
   const id = book.isbn || `${book.title}|${book.author}`;
   // CACHE_REV : à incrémenter quand un adaptateur change, pour ne pas garder d'anciens « non trouvé » erronés
-  return `r${CACHE_REV}|${settings.systemType}|${settings.baseUrl}|${id}`.toLowerCase();
+  return `r${CACHE_REV}|${lib.systemType}|${lib.baseUrl}|${id}`.toLowerCase();
 }
-
-// Vide le cache quand l'utilisateur change de catalogue
-api.storage.onChanged.addListener((changes, area) => {
-  if (area === "sync" && (changes.baseUrl || changes.systemType)) {
-    api.storage.local.remove(CACHE_KEY);
-  }
-});
 
 // ---------- File d'attente séquentielle (anti-surcharge) ----------
 let chain = Promise.resolve();
@@ -222,29 +235,48 @@ async function politePostJson(url, body, headers) {
   throw new RateLimited();
 }
 
-// Lecture du cache SEULE (aucun appel réseau) : sert à afficher les pastilles au chargement
+// Fusionne les résultats de plusieurs médiathèques en un seul statut global :
+// disponible > emprunté > erreur (résultat incomplet) > non trouvé
+const RANK = { available: 3, borrowed: 2, error: 1, notfound: 0 };
+function aggregate(libs, results) {
+  const entries = libs.map((lib, i) => ({ id: lib.id, name: lib.name, ...results[i] }));
+  const best = entries.reduce((a, b) => ((RANK[b.status] ?? 0) > (RANK[a.status] ?? 0) ? b : a));
+  const ts = Math.min(...entries.map((e) => e.ts || Date.now()));
+  return {
+    status: best.status,
+    url: best.url,
+    reason: best.reason,
+    message: best.message,
+    ts,
+    cached: entries.every((e) => e.cached),
+    libraries: entries,
+  };
+}
+
+// Lecture du cache SEULE (aucun appel réseau) : sert à afficher les pastilles au chargement.
+// Un livre n'est « en mémoire » que si TOUTES les médiathèques ont un résultat récent.
 async function lookupCached(books) {
-  const settings = await getSettings();
-  if (!settings.baseUrl) return books.map(() => null);
+  const { libraries } = await getSettings();
+  if (!libraries.length) return books.map(() => null);
   const cache = await readCache();
   return books.map((book) => {
-    const hit = cache[cacheKey(settings, book)];
-    return hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)
-      ? { status: hit.status, url: hit.url, cached: true, ts: hit.ts }
-      : null;
+    const results = libraries.map((lib) => {
+      const hit = cache[cacheKey(lib, book)];
+      return hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)
+        ? { status: hit.status, url: hit.url, cached: true, ts: hit.ts }
+        : null;
+    });
+    return results.every(Boolean) ? aggregate(libraries, results) : null;
   });
 }
 
-// ---------- Vérification d'un livre ----------
-async function checkBook(book, force = false) {
-  const settings = await getSettings();
-  if (!settings.baseUrl) return { status: "error", reason: "not_configured" };
-
-  const adapter = getAdapter(settings.systemType);
+// ---------- Vérification d'un livre dans UNE médiathèque ----------
+async function checkInLibrary(lib, book, force) {
+  const adapter = getAdapter(lib.systemType);
   if (!adapter) return { status: "error", reason: "unknown_system" };
 
   // 1) Cache
-  const key = cacheKey(settings, book);
+  const key = cacheKey(lib, book);
   const cache = await readCache();
   const hit = cache[key];
   if (!force && hit && Date.now() - hit.ts < (CACHE_TTL[hit.status] ?? 0)) {
@@ -252,22 +284,24 @@ async function checkBook(book, force = false) {
   }
 
   // 2) Permission d'accès au domaine du catalogue
-  const origin = new URL(settings.baseUrl).origin + "/*";
-  if (!(await api.permissions.contains({ origins: [origin] }))) {
+  let origins;
+  try { origins = [new URL(lib.baseUrl).origin + "/*", ...(adapter.extraOrigins || []).map((o) => o + "/*")]; }
+  catch { return { status: "error", reason: "bad_url" }; }
+  if (!(await api.permissions.contains({ origins }))) {
     return { status: "error", reason: "no_permission" };
   }
 
   // 3) Requêtes (par ordre de priorité) via la file d'attente
   let result = { status: "notfound" };
   const debugLines = []; // diagnostic affiché au survol de la pastille (adaptateurs qui en fournissent)
-  let usedUrl = adapter.buildSearchUrl(settings.baseUrl, adapter.buildQueries(book)[0] || book.title);
+  let usedUrl = adapter.buildSearchUrl(lib.baseUrl, adapter.buildQueries(book)[0] || book.title);
 
   try {
-    await warmUp(new URL(settings.baseUrl).origin);
+    await warmUp(new URL(lib.baseUrl).origin);
     const ctx = { postJson: politePostJson, getJson: politeGetJson, getPage: politeGetPage };
     for (const query of adapter.buildQueries(book).slice(0, MAX_QUERIES_PER_BOOK)) {
-      const url = adapter.buildSearchUrl(settings.baseUrl, query);
-      const parsed = await adapter.check(ctx, settings.baseUrl, query, book);
+      const url = adapter.buildSearchUrl(lib.baseUrl, query);
+      const parsed = await adapter.check(ctx, lib.baseUrl, query, book);
       usedUrl = url;
       if (parsed.status === "error") return { ...parsed, url };
       result = parsed;
@@ -281,10 +315,21 @@ async function checkBook(book, force = false) {
   }
 
   // 4) Mise en cache (on ne cache pas les erreurs)
-  cache[key] = { status: result.status, url: usedUrl, ts: Date.now() };
-  await writeCache(cache);
+  const ts = Date.now();
+  const fresh = await readCache(); // relecture : une autre médiathèque a pu écrire entre-temps
+  fresh[key] = { status: result.status, url: usedUrl, ts };
+  await writeCache(fresh);
 
-  return { status: result.status, url: usedUrl, cached: false, ts: Date.now(), debug: result.status === "available" ? undefined : debugLines.join("\n") || undefined };
+  return { status: result.status, url: usedUrl, cached: false, ts, debug: result.status === "available" ? undefined : debugLines.join("\n") || undefined };
+}
+
+// ---------- Vérification d'un livre dans toutes les médiathèques ----------
+async function checkBook(book, force = false) {
+  const { libraries } = await getSettings();
+  if (!libraries.length) return { status: "error", reason: "not_configured", libraries: [] };
+  const results = [];
+  for (const lib of libraries) results.push(await checkInLibrary(lib, book, force));
+  return aggregate(libraries, results);
 }
 
 // ---------- Messagerie avec le content script ----------
@@ -304,7 +349,7 @@ api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
   if (msg?.type === "GET_CONFIG_STATE") {
-    getSettings().then((s) => sendResponse({ configured: !!s.baseUrl }));
+    getSettings().then((s) => sendResponse({ configured: s.libraries.length > 0 }));
     return true;
   }
 });

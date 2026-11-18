@@ -12,6 +12,7 @@ import { C3rbAdapter } from "./c3rb.js";
 import { KohaAdapter } from "./koha.js";
 import { NanookAdapter, BokehAdapter } from "./afi.js";
 import { DecalogAdapter } from "./decalog.js";
+import { EsidocAdapter } from "./esidoc.js";
 import { QuriaAdapter } from "./quria.js";
 import { SapientiaAdapter } from "./sapientia.js";
 import { VSmartAdapter } from "./vsmart.js";
@@ -23,6 +24,7 @@ export const ADAPTERS = [
   NanookAdapter,
   BokehAdapter,
   DecalogAdapter,
+  EsidocAdapter,
   QuriaAdapter,
   SapientiaAdapter,
   VSmartAdapter,

@@ -6,7 +6,7 @@ Extension de navigateur qui affiche, directement sur la page **Mes envies** de [
 > Ce projet n'est ni développé ni affilié à Booknode, ni à Archimed/Syracuse. C'est un outil personnel, qui ne modifie aucune donnée envoyée au serveur.
 
 
-Une pastille apparaît en haut à droite de chaque livre :
+Une pastille apparaît à côté de chaque livre — **une par médiathèque** si vous en avez configuré plusieurs :
 
 | Pastille | Signification |
 |---|---|
@@ -15,7 +15,7 @@ Une pastille apparaît en haut à droite de chaque livre :
 | ❌ gris | **Non trouvé** : aucune notice ne correspond |
 | ❓ rouge | **Erreur** : non configuré, catalogue injoignable ou trop de requêtes (survolez la pastille pour le détail) |
 
-Un clic sur la pastille ouvre la recherche correspondante dans le catalogue.
+Un clic sur une pastille ouvre la recherche correspondante dans le catalogue de cette médiathèque ; son nom s'affiche au survol.
 
 ## Sur la page d'un livre
 
@@ -27,6 +27,7 @@ Sur la page de n'importe quel livre Booknode, un bouton **↻** apparaît à dro
 - **C3RB Informatique / Portail Orphée**
 - **Koha** (OPAC)
 - **AFI Nanook** et **Bokeh**
+- **e-sidoc** (portails CDI des établissements scolaires) — disponibilité lue directement dans la liste de résultats ; les articles de presse sont ignorés
 - **Decalog SIGB** *(non testé)*
 - **Quria (Axiell)** *(non testé)*
 - **Sapientia (Microbib)** *(non testé)*
@@ -57,9 +58,11 @@ L'architecture est faite pour ajouter d'autres systèmes (PMB, Waterbear…), vo
 
 La page de réglages s'ouvre automatiquement à la première installation. Vous pouvez la rouvrir en cliquant sur l'icône de l'extension.
 
-1. Choisissez le **système de catalogue**.
-2. Saisissez l'**URL de base** de votre bibliothèque, sans chemin de recherche.
-3. Cliquez sur **Enregistrer** et **acceptez l'autorisation d'accès** au site du catalogue, sinon la vérification ne peut pas fonctionner.
+1. Pour chaque médiathèque, donnez (facultatif) un **nom**, choisissez le **système de catalogue** et saisissez l'**URL de base**, sans chemin de recherche.
+2. Cliquez sur **Ajouter une médiathèque** pour en configurer d'autres (bibliothèque municipale, CDI, universitaire…). L'ordre de la liste est l'ordre des pastilles.
+3. Cliquez sur **Enregistrer** et **acceptez l'autorisation d'accès** aux sites des catalogues, sinon la vérification ne peut pas fonctionner.
+
+Les réglages d'une version précédente (une seule bibliothèque) sont convertis automatiquement.
 
 Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio`. **Rien n'est envoyé au catalogue au chargement** : seules les pastilles déjà en mémoire (2 jours) s'affichent. Cliquez sur le bouton **↻** à côté du titre « Mes envies » pour vérifier les livres qui n'ont pas de résultat récent (un compteur indique la progression). **Maj + clic** revérifie tous les livres en ignorant la mémoire.
 
@@ -71,6 +74,7 @@ Ouvrez ensuite votre page `https://booknode.com/profil/<vous>/biblio`. **Rien n'
    - `POST /Portal/Services/ILSClient.svc/CheckAvailability` retourne les exemplaires disponibles.
 
    Syracuse est une application monopage : le HTML de `search.aspx` ne contient pas les résultats, d'où l'appel direct à ces services.
+   Pour e-sidoc : `GET /recherche/<mots>` retourne les notices avec leurs exemplaires (colonne **Statut**) ; aucune notice n'est ouverte.
    Pour C3RB / Orphée (pages rendues côté serveur) :
    - `GET /recherche-simple/simple/Mots+Notice/-1/<mots>/perso` retourne la liste des notices ;
    - `GET /detail-dune-notice/notice/<id>` est lue pour chaque notice retenue (3 au maximum) : la colonne **Situation** du tableau « Exemplaires » donne `En rayon` (disponible) ou `Sorti/demandée` (emprunté). Un exemplaire en rayon mais en « consultation sur place » / « exclu du prêt » n'est pas compté comme disponible.
@@ -90,7 +94,7 @@ Une notice n'est retenue que si au moins 60 % des mots du titre y apparaissent, 
 - 1 seconde minimum entre deux appels, un livre à la fois.
 - En cas de « Trop de requêtes » (HTTP 429/503 ou message dans la réponse) : pause de 30 s, puis 60 s, 90 s… jusqu'à 120 s, avec 3 tentatives.
 - **Mémoire de 2 jours** pour tous les résultats (« disponible », « emprunté », « non trouvé »). Les erreurs ne sont pas mises en mémoire. Les entrées périmées sont supprimées automatiquement.
-- Le cache est vidé automatiquement quand vous changez de catalogue. Le bouton **Vider le cache** des réglages le vide à la main. Le bouton ↻ d'une page livre ignore toujours la mémoire.
+- Le cache est tenu **par médiathèque** : ajouter ou retirer une médiathèque ne perd pas les autres résultats (seules les nouvelles sont interrogées). Le bouton **Vider le cache** des réglages le vide à la main. Le bouton ↻ d'une page livre ignore toujours la mémoire.
 
 ## Confidentialité
 
@@ -114,6 +118,7 @@ booknode-biblio/
     ├── vsmart.js        Adaptateur V-Smart (Axiell)
     ├── koha.js          Adaptateur Koha
     ├── afi.js           Adaptateurs AFI Nanook et Bokeh
+    ├── esidoc.js        Adaptateur e-sidoc
     ├── decalog.js       Adaptateur Decalog SIGB
     ├── quria.js         Adaptateur Quria (Axiell)
     └── sapientia.js     Adaptateur Sapientia (Microbib)
@@ -132,7 +137,8 @@ Votre bibliothèque municipale ou universitaire n'est pas encore supportée ? Vo
 
 | Symptôme | Piste |
 |---|---|
-| Pastille ❓ « non configuré » | Renseignez l'URL dans les réglages. |
+| Pastille ❓ « non configuré » | Ajoutez une médiathèque dans les réglages. |
+| e-sidoc : ❓ « liste de résultats introuvable » | Le portail charge peut-être la liste en AJAX : adaptez `adapters/esidoc.js` (voir `parseList`). |
 | Pastille ❓ « accès non autorisé » | Ouvrez les réglages, cliquez sur **Enregistrer** et acceptez l'autorisation. |
 | Pastille ❓ « trop de requêtes » | Attendez quelques minutes et rechargez. Au besoin, augmentez `MIN_DELAY_MS` dans `background.js`. |
 | Pastille ❓ « Réponse Search inattendue » | Le format du portail diffère : copiez le message affiché au survol et adaptez `adapters/archimed.js`. |

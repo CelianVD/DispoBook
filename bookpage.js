@@ -25,10 +25,11 @@
     error:     { icon: "question", color: "#d0432f", label: "Erreur / non configuré" },
   };
   const REASONS = {
-    not_configured: " — configurez l'URL dans les options",
+    not_configured: " — ajoutez une médiathèque dans les options",
     no_permission: " — accès au site du catalogue non autorisé (ouvrez les options et enregistrez)",
     rate_limited: " — le catalogue limite les requêtes, réessayez plus tard",
     network: " — catalogue injoignable",
+    bad_url: " — URL du catalogue invalide (voir les options)",
   };
 
   const svg = (name) =>
@@ -103,24 +104,32 @@
   }
 
   // ---------- Affichage ----------
-  function showResult(wrap, res) {
-    wrap.querySelector(".bnb-badge")?.remove();
-    const key = STATES[res?.status] ? res.status : "error";
+  function makeBadge(entry, showName) {
+    const key = STATES[entry?.status] ? entry.status : "error";
     const s = STATES[key];
     const a = document.createElement("a");
     a.className = "bnb-badge";
     a.style.color = s.color;
-    a.title = s.label + (key === "error" ? (REASONS[res?.reason] || ` (${res?.reason || "inconnue"})`) : "")
-      + (key === "error" && res?.message ? `\n${res.message}` : "");
+    a.title = (showName && entry?.name ? `${entry.name} : ` : "") + s.label
+      + (key === "error" ? (REASONS[entry?.reason] || ` (${entry?.reason || "inconnue"})`) : "")
+      + (key === "error" && entry?.message ? `\n${entry.message}` : "")
+      + (entry?.debug ? `\n${entry.debug}` : "");
     a.innerHTML = svg(s.icon);
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    if (res?.url) a.href = res.url;
+    if (entry?.url) a.href = entry.url;
     else {
       a.href = "#";
       a.addEventListener("click", (e) => { e.preventDefault(); api.runtime.sendMessage({ type: "OPEN_OPTIONS" }); });
     }
-    wrap.appendChild(a);
+    return a;
+  }
+
+  // Une pastille par médiathèque, chacune cliquable vers SON catalogue
+  function showResult(wrap, res) {
+    wrap.querySelectorAll(".bnb-badge").forEach((n) => n.remove());
+    const entries = res?.libraries?.length ? res.libraries : [res];
+    for (const entry of entries) wrap.appendChild(makeBadge(entry, entries.length > 1));
   }
 
   async function check(wrap, btn) {
@@ -128,7 +137,7 @@
     if (!book) return;
     btn.disabled = true;
     btn.classList.add("bnb-spin");
-    wrap.querySelector(".bnb-badge")?.remove();
+    wrap.querySelectorAll(".bnb-badge").forEach((n) => n.remove());
     let res;
     try {
       // force : un clic sur « actualiser » ignore le cache
@@ -153,7 +162,7 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "bnb-reload";
-    btn.title = "Vérifier la disponibilité à la bibliothèque";
+    btn.title = "Vérifier la disponibilité dans vos médiathèques";
     btn.setAttribute("aria-label", btn.title);
     btn.innerHTML = svg("reload");
     btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); check(wrap, btn); });
